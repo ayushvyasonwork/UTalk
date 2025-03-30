@@ -1,7 +1,9 @@
 {
   "compilerOptions": {
+    "baseUrl": ".",
     "paths": {
       "@/*": ["./*"]
-    }
+    },
+    "checkJs": false  // ✅ Disables TypeScript checking for JS files
   }
-}
+} 
