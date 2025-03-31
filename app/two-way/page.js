@@ -5,7 +5,7 @@ import mediasoupClient from 'mediasoup-client'
 
 const VideoCallUI = () => {
     const [selfSocketId, setSelfSocketId] = useState(null);
-    const [audio, setAudio] = useState(true);
+    const [audio, setAudio] = useState(false);
     const [video, setVideo] = useState(true);
     const [stream, setStream] = useState(null);
     const [remoteStream, setRemoteStream] = useState(null);
@@ -16,7 +16,7 @@ const VideoCallUI = () => {
     const [consumerTransport, setConsumerTransport] = useState();
     const [producer, setProducer] = useState();
     const [consumer, setConsumer] = useState();
-    const [isProducer, setIsProducer] = useState();
+    const [isProducer, setIsProducer] = useState(false);
     const [params, setParams] = useState({
         encodings: [
             {
@@ -55,19 +55,19 @@ const VideoCallUI = () => {
         isProducer?createSendTransport():createRecvTransport();
     }
     const goConnect = useCallback((prodOrCons) => {
-        setIsProducer(prodOrCons);
-    
+        // setIsProducer(prev=>prodOrCons);
         // Call getRTPCapabilities only if sockt is initialized and connected
+       console.log('value of device in go connect is ',device);
         if (sockt) {
             if (!device) {
-                getRTPCapabilities();
+                getRTPCapabilities(prodOrCons);
             } else {
-                goCreateTransport();
+                goCreateTransport(prodOrCons);
             }
         } else {
-            console.error("❌ Socket not initialized yet.");
+            console.error("❌ Socket not initialized yet in go connect .");
         }
-    }, [setIsProducer, device, sockt]); // `sockt` added to dependencies
+    },[device,sockt]); // `sockt` added to dependencies
     
     
     const getLocalStream = useCallback(async () => {
@@ -76,24 +76,35 @@ const VideoCallUI = () => {
                 audio: audio,
                 video: video,
             });
-    
+            console.log('value of socket in get local stream is ',sockt);
             setStream(newStream);
             streamSuccess(newStream);
         } catch (error) {
             console.error("❌ Error accessing media devices:", error.message);
         }
-    }, [audio, video]);
+    }, [audio, video,sockt]);
     
-    const streamSuccess = (newStream) => {
+    const streamSuccess = useCallback((newStream) => {
         if (localVideoRef.current) {
             localVideoRef.current.srcObject = newStream;
-            goConnect(true);
+            // Ensure socket is initialized before proceeding
+            const track = newStream.getVideoTracks()[0]
+            if (sockt) {
+                setParams({track,...params});
+                
+                goConnect(true);
+                
+            } else {
+                console.error("❌ Socket is not yet initialized, waiting...");
+                setTimeout(() => {
+                    if (sockt) goConnect(true);
+                    else console.error("❌ Still no socket, retrying failed.");
+                }, 500); // Small delay to allow socket initialization
+            }
         } else {
             console.error("❌ localVideo element not found!");
         }
-        console.log("✅ Stream updated:", { audio, video });
-    };
-    
+    },[sockt,params]);
     const handleAudio = () => {
         if (stream) {
             const audioTrack = stream.getAudioTracks()[0];
@@ -114,12 +125,13 @@ const VideoCallUI = () => {
         }
     };
     
-    const connectSendTransport = useCallback(async () => {
+    const connectSendTransport = useCallback(async (newTransport) => {
+        // console.log('producer transport ',producerTransport);
+        console.log('media stream ',stream);
         if (!producerTransport || !stream) {
             console.error("❌ Producer transport or media stream not available");
             return;
         }
-    
         console.log("📡 Starting Media Production...");
     
         const track = stream.getVideoTracks()[0];
@@ -147,10 +159,10 @@ const VideoCallUI = () => {
         }
     }, [producerTransport, stream]);
     
-    const connectRecvTransport = useCallback(async () => {
+    const connectRecvTransport = useCallback(async (newDevice) => {
         try {
             await sockt.emit('consume', {
-                rtpCapabilities: device.rtpCapabilities,
+                rtpCapabilities: newDevice.rtpCapabilities,
             }, async ({ params }) => {
                 if (params.error) {
                     console.log('Cannot Consume');
@@ -183,8 +195,9 @@ const VideoCallUI = () => {
         }
     }, [setConsumer, params, sockt, device, consumerTransport]);
     
-    const createSendTransport = useCallback(() => {
-        if (!sockt || !device) {
+    const createSendTransport = useCallback((newDevice) => {
+        console.log('in create send device is ',newDevice);
+        if (!sockt || !newDevice) {
             console.error("❌ Socket or Device not initialized in send transport ");
             return;
         }
@@ -198,11 +211,10 @@ const VideoCallUI = () => {
             }
     
             console.log("✅ Received Transport Params:", params);
-    
+            let newTransport;
             try {
-                const newTransport = device.createSendTransport(params);
+                newTransport = newDevice.createSendTransport(params);
                 setProducerTransport(newTransport);
-    
                 newTransport.on("connect", async ({ dtlsParameters }, callback, errback) => {
                     console.log("🔗 Connecting transport...");
                     try {
@@ -242,7 +254,7 @@ const VideoCallUI = () => {
                         newTransport.close();
                     }
                 });
-                connectSendTransport()
+                connectSendTransport(newTransport)
             } catch (error) {
                 console.error("❌ Error creating send transport:", error);
             }
@@ -250,50 +262,54 @@ const VideoCallUI = () => {
     }, [sockt, device, connectSendTransport]);
     
     const createRecvTransport = useCallback(async () => {
-        await sockt.emit('createWebRtcTransport', { sender: false }, ({ params }) => {
-            if (params.error) {
-                console.log(params.error);
-                return;
-            }
-            console.log(params);
-            let tempConsumerTransport = device.createRecvTransport(params);
-            tempConsumerTransport.on('connect', async ({ dtlsParameters }, callback, errback) => {
-                try {
-                    await sockt.emit('transport-recv-connect', {
-                        dtlsParameters,
-                    });
-                    // Tell the transport that parameters were transmitted.
-                    callback();
-                } catch (error) {
-                    // Tell the transport that something was wrong
-                    errback(error);
-                }
-            });
-            setConsumerTransport(tempConsumerTransport);
-            connectRecvTransport();
-        });
-    }, [sockt, params, device]);
+        if (!device) {
+            console.error("❌ Device is not initialized yet!");
+            return; // Exit the function if device is not set
+        }
     
-    const createDevice = useCallback(async () => {
-        if (!rtpCapabilities) {
+        if (sockt) {
+            await sockt.emit('createWebRtcTransport', { sender: false }, ({ params }) => {
+                if (params.error) {
+                    console.log(params.error);
+                    return;
+                }
+                console.log(params);
+                let tempConsumerTransport = device.createRecvTransport(params);
+                tempConsumerTransport.on('connect', async ({ dtlsParameters }, callback, errback) => {
+                    try {
+                        await sockt.emit('transport-recv-connect', { dtlsParameters });
+                        callback(); // Transport connect success
+                    } catch (error) {
+                        errback(error); // Handle error in connection
+                    }
+                });
+                setConsumerTransport(tempConsumerTransport);
+                connectRecvTransport(); // Start consuming
+            });
+        }
+    }, [sockt, device, connectRecvTransport]);
+    
+    const createDevice = async (rtpCaps,prodOrCons) => {
+        console.log('Entered createDevice');
+        if (!rtpCaps) {
             console.error("❌ RTP Capabilities not available yet.");
             return;
         }
-    
         try {
             const newDevice = new mediasoupClient.Device();
-            setDevice(newDevice);
+            
+            console.log('Device created:', newDevice);
     
-            // Load the device with RTP capabilities of the router (server side)
+            // Load the device with RTP capabilities from the backend (router)
             await newDevice.load({
-                routerRtpCapabilities: rtpCapabilities,
+                routerRtpCapabilities: rtpCaps,  // Use passed parameter instead of state
             });
-    
+            setDevice(newDevice);
             console.log('✅ Device loaded with RTP Capabilities:', newDevice.rtpCapabilities);
-    
-            // Based on whether the user is producer or consumer, create appropriate transport
-            if (isProducer) {
-                createSendTransport();
+            console.log('value of isProducer in create device is ',isProducer);
+            // Based on whether the user is a producer or consumer, create appropriate transport
+            if (prodOrCons) {
+                createSendTransport(newDevice);
             } else {
                 createRecvTransport();
             }
@@ -303,25 +319,29 @@ const VideoCallUI = () => {
                 console.warn('❌ Browser does not support Mediasoup');
             }
         }
-    }, [rtpCapabilities, isProducer, createSendTransport, createRecvTransport]);
+    };
+    
     
     // ✅ Request RTP Capabilities from the backend
-    const getRTPCapabilities = useCallback(() => {
-        if (!sockt) {
-            console.error("❌ Socket not initialized");
-            return;
-        }
+    const getRTPCapabilities = useCallback((prodOrCons) => {
         sockt.emit("createRoom", (data) => {
             if (data && data.rtpCapabilities) {
                 console.log("✅ RTP Capabilities received from backend:", data);
-                setRtpCapabilities(data.rtpCapabilities);
+    
+                // Use functional update to ensure we have the latest value
+                setRtpCapabilities((prev) => {
+                    const updatedRtpCapabilities = data.rtpCapabilities;
+    
+                    // Call createDevice immediately with the new value
+                    createDevice(updatedRtpCapabilities,prodOrCons);
+                    
+                    return updatedRtpCapabilities;
+                });
             } else {
                 console.error("❌ RTP Capabilities not available from backend.");
             }
-        });
+        });        
     }, [sockt]);
-    
-    
     useEffect(() => {
         const socket = io("https://localhost:5000", {
             transports: ["websocket"],
@@ -346,9 +366,7 @@ const VideoCallUI = () => {
             // socket.off("rtpCapabilities");
             socket.disconnect();
         };
-    }, [handleConnSuccess]); // Only re-run if `handleConnSuccess` changes
-    
-    
+    }, [handleConnSuccess,setSockt]);
     return (
         <div className="flex items-center justify-center h-screen bg-gray-900">
             <div className="bg-gray-800 bg-opacity-90 p-6 rounded-lg shadow-xl w-[900px]">
@@ -429,5 +447,4 @@ const VideoCallUI = () => {
         </div>
     );
 };
-
 export default VideoCallUI;

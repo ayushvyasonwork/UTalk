@@ -1,3 +1,4 @@
+
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import io from 'socket.io-client';
 
@@ -5,7 +6,7 @@ import io from 'socket.io-client';
 const SocketContext = createContext();
 
 // Define a provider component
-export const SocketProvider = ({ children }) => {
+const SocketProvider = ({ children }) => {
     const [socket, setSocket] = useState(null);
 
     useEffect(() => {
@@ -35,10 +36,11 @@ export const SocketProvider = ({ children }) => {
 };
 
 // Custom hook to access the socket
-export const useSocket = () => {
+const useSocket = () => {
     const context = useContext(SocketContext);
     if (!context) {
         throw new Error('useSocket must be used within a SocketProvider');
     }
     return context;
 };
+export {SocketProvider,useSocket}

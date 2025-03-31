@@ -2,11 +2,13 @@
 import { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import io from 'socket.io-client';
+import { useSocket } from './context/socketContext';
 
 export default function Home() {
     const [roomId, setRoomId] = useState('');
     const router = useRouter();
-
+    const socket=useSocket();
+    console.log('socket in page is ',socket);
     const createRoom = () => {
         const newRoomId = Math.random().toString(36).substr(2, 9);
         router.push(`/meeting/${newRoomId}`);
