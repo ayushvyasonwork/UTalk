@@ -85,8 +85,10 @@ io.on("connection", async (socket) => {
     socket.on('transport-connect', async ({ dtlsParameters }) => {
         console.log('DTLS PARAMS... ', { dtlsParameters })
         await producerTransport.connect({ dtlsParameters })
+        console.log('123');
       })
       socket.on('transport-produce', async ({ kind, rtpParameters, appData }, callback) => {
+        console.log('entered transport produce event ');
         // call produce based on the prameters from the client
         producer = await producerTransport.produce({
           kind,

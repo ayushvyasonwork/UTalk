@@ -8,6 +8,7 @@ const VideoCallUI = () => {
     const [audio, setAudio] = useState(false);
     const [video, setVideo] = useState(true);
     const [stream, setStream] = useState(null);
+    const newLocalStream = useRef(null);
     const [remoteStream, setRemoteStream] = useState(null);
     const [sockt, setSockt] = useState(null);
     const [rtpCapabilities, setRtpCapabilities] = useState(null);
@@ -78,6 +79,7 @@ const VideoCallUI = () => {
             });
             console.log('value of socket in get local stream is ',sockt);
             setStream(newStream);
+            newLocalStream.current=newStream;
             streamSuccess(newStream);
         } catch (error) {
             console.error("❌ Error accessing media devices:", error.message);
@@ -127,21 +129,23 @@ const VideoCallUI = () => {
     
     const connectSendTransport = useCallback(async (newTransport) => {
         // console.log('producer transport ',producerTransport);
-        console.log('media stream ',stream);
-        if (!producerTransport || !stream) {
+        const tempStream=newLocalStream.current;
+        console.log('media stream ',tempStream);
+        
+        if (!newTransport || !tempStream) {
             console.error("❌ Producer transport or media stream not available");
             return;
         }
         console.log("📡 Starting Media Production...");
     
-        const track = stream.getVideoTracks()[0];
+        const track = tempStream.getVideoTracks()[0];
         if (!track) {
             console.error("❌ No video track available");
             return;
         }
     
         try {
-            let tempProducer = await producerTransport.produce({ track });
+            let tempProducer = await newTransport.produce({ track });
     
             tempProducer.on("trackended", () => {
                 console.warn("⚠️ Track ended.");
@@ -247,13 +251,13 @@ const VideoCallUI = () => {
                     }
                 });
     
-                newTransport.on("connectionstatechange", (state) => {
-                    console.log("🔄 Transport State Changed:", state);
-                    if (state === "failed" || state === "closed") {
-                        console.error("❌ Transport Connection Failed");
-                        newTransport.close();
-                    }
-                });
+                // newTransport.on("connectionstatechange", (state) => {
+                //     console.log("🔄 Transport State Changed:", state);
+                //     if (state === "failed" || state === "closed") {
+                //         console.error("❌ Transport Connection Failed");
+                //         newTransport.close();
+                //     }
+                // });
                 connectSendTransport(newTransport)
             } catch (error) {
                 console.error("❌ Error creating send transport:", error);
@@ -425,7 +429,6 @@ const VideoCallUI = () => {
                         End Call
                     </button>
                 </div>
-
                 {/* Advanced Controls */}
                 <div className="grid grid-cols-3 gap-3 mt-6 text-center">
                 <button className="bg-indigo-500 hover:bg-indigo-600 text-white py-2 px-4 rounded-md shadow-md"
