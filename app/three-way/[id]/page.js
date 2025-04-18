@@ -3,6 +3,7 @@ import { usePathname } from 'next/navigation';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import io from 'socket.io-client';
 import mediasoupClient from 'mediasoup-client'
+import { RemoteVideoPlayer } from '@/app/components/RemoteVideoPlayer';
 
 const VideoConference = () => {
   const [audio, setAudio] = useState(false);
@@ -37,14 +38,15 @@ const VideoConference = () => {
       videoGoogleStartBitrate: 1000,
     },
   });
-  // const remoteStreamsRef = useRef([]);
-  // const [remoteStreams, setRemoteStreams] = useState([]);
-  const remoteStreamsMap = useRef(new Map()); // { id: MediaStream }
+  const remoteStreamsRef = useRef([]);
   const [remoteStreams, setRemoteStreams] = useState([]);
-  const remoteVideoRef = useRef(null);
+  // const remoteStreamsMap = useRef(new Map()); // { id: MediaStream }
+  // const [remoteStreams, setRemoteStreams] = useState([]);
+  // const remoteVideoRef = useRef(null);
   const [rtpCapabilities, setRtpCapabilities] = useState();
   const [consumerTransport, setConsumerTransport] = useState([]);
   const pathName = usePathname();
+
   const roomName = pathName.split("/").pop();
   // console.log(pathName, roomName);
   const handleConnSuccess = useCallback(({ socketId }) => {
@@ -131,13 +133,13 @@ const VideoConference = () => {
       if (params.kind === 'video') {
         // Push to the ref
         // console.log('Track enabled:', track.enabled, 'Muted:', track.muted);
-        // remoteStreamsRef.current.push({ id: remoteProducerId, stream: mediaStream });
-        // console.log('remoteStreamsRef.current', remoteStreamsRef.current);
+        remoteStreamsRef.current.push({ id: remoteProducerId, stream: mediaStream });
+        console.log('remoteStreamsRef.current', remoteStreamsRef.current);
         // // Update state to trigger re-render
-        // setRemoteStreams([...remoteStreamsRef.current]);
+        setRemoteStreams([...remoteStreamsRef.current]);
         // console.log('remote streams are ', remoteStreams);
         // addRemoteStream(remoteProducerId,mediaStream);
-        remoteVideoRef.current.srcObject=mediaStream;
+        // remoteVideoRef.current.srcObject=mediaStream;
       }
 
       // Resume stream from server side
@@ -388,6 +390,9 @@ const VideoConference = () => {
       socket.disconnect();
     };
   }, [handleConnSuccess]);
+  useEffect(() => {
+    setRemoteStreams([...remoteStreamsRef.current]);
+  }, []);
 
   return (
     <div className="w-full p-4 bg-gray-100 min-h-screen">
@@ -405,25 +410,32 @@ const VideoConference = () => {
 
         {/* Remote Videos */}
         
-        {/* {remoteStreams.map(([id, stream], index) => (
-          <div key={id} className="flex flex-col items-center">
+        {remoteStreams.map((remote, index) => (
+          <div key={remote.id} className="flex flex-col items-center">
             <video
               autoPlay
               playsInline
               className="w-60 h-40 bg-black p-2 rounded-lg shadow"
               ref={(el) => {
-                if (el && !el.srcObject) el.srcObject = stream;
+                if (el) el.srcObject = remote.stream;
               }}
             ></video>
             <p className="mt-2 text-center text-xs text-gray-500">User {index + 1}</p>
           </div>
+        ))}
+        {/* {remoteStreams.map((remote, index) => (
+          <div key={remote.id} className="flex flex-col items-center">
+            <RemoteVideoPlayer  stream={remote.stream}>
+            </RemoteVideoPlayer>
+            <p className="mt-2 text-center text-xs text-gray-500">User {index + 1}</p>
+          </div>
         ))} */}
-         <div className="relative border-4 border-gray-700 rounded-lg overflow-hidden">
+         {/* <div className="relative border-4 border-gray-700 rounded-lg overflow-hidden">
                         <video ref={remoteVideoRef} autoPlay playsInline className="w-full h-[250px] bg-gray-600"></video>
                         <div className="absolute bottom-2 left-2 bg-black bg-opacity-50 text-white px-3 py-1 rounded-md text-sm">
                             Other
                         </div>
-                    </div>
+                    </div> */}
       </div>
 
       {/* Controls */}
