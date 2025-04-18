@@ -68,8 +68,15 @@ io.on('connection', (socket) => {
   console.log(`Socket connected: ${socket.id}`);
   socket.emit('connection-success', { socketId: socket.id });
   socket.on('disconnect', () => {
-    console.log('Peer disconnected');
-    
+    console.log('Peer disconnected:', socket.id);
+
+    // Remove the producer entry with this socket.id
+    const index = producers.findIndex(p => p.socketId === socket.id);
+    if (index !== -1) {
+      producers.splice(index, 1);
+      console.log(`Producer with socketId ${socket.id} removed.`);
+    }
+    // console.log('producers are ',producers);
   });
 
   socket.on('join-room', async ({ roomName }, callback) => {
@@ -180,11 +187,14 @@ io.on('connection', (socket) => {
       console.log('transport for this producer closed ')
       producer.close()
     })
-
+    console.log('producers are in transport-produce',producers);
+    console.log('producers.length',producers.length);
+    let flag=producers.length>1?true:false;
+    console.log('producers exists value',flag);
     // Send back to the client the Producer's id
     callback({
       id: producer.id,
-      producersExist: producers.length>1 ? true : false
+      producersExist: flag
     })
   })
   socket.on('getProducers', callback => {

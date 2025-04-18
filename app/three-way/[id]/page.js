@@ -37,9 +37,11 @@ const VideoConference = () => {
       videoGoogleStartBitrate: 1000,
     },
   });
-  const remoteStreamsRef = useRef([]);
+  // const remoteStreamsRef = useRef([]);
+  // const [remoteStreams, setRemoteStreams] = useState([]);
+  const remoteStreamsMap = useRef(new Map()); // { id: MediaStream }
   const [remoteStreams, setRemoteStreams] = useState([]);
-  
+  const remoteVideoRef = useRef(null);
   const [rtpCapabilities, setRtpCapabilities] = useState();
   const [consumerTransport, setConsumerTransport] = useState([]);
   const pathName = usePathname();
@@ -81,13 +83,18 @@ const VideoConference = () => {
   }, [producerTransport, stream]);
   const getProducers = () => {
     console.log('entered get producers function')
-    socket.emit('getProducers', producerIds => {
+    socktRef.current.emit('getProducers', producerIds => {
       console.log(producerIds)
       // for each of the producer create a consumer
       // producerIds.forEach(id => signalNewConsumerTransport(id))
       producerIds.forEach(signalNewConsumerTransport)
     })
   }
+  const addRemoteStream = (id, stream) => {
+    remoteStreamsMap.current.set(id, stream);
+    setRemoteStreams(Array.from(remoteStreamsMap.current.entries())); // [[id, stream], ...]
+  };
+
   const connectRecvTransport = async (consumerTransportt, remoteProducerId, serverConsumerTransportId) => {
     console.log('connectRecvTransport');
     await socktRef.current.emit('consume', {
@@ -99,14 +106,14 @@ const VideoConference = () => {
         console.log('Cannot Consume');
         return;
       }
-  
+
       const consumer = await consumerTransportt.consume({
         id: params.id,
         producerId: params.producerId,
         kind: params.kind,
         rtpParameters: params.rtpParameters
       });
-  
+
       setConsumerTransport(prev => [
         ...prev,
         {
@@ -116,26 +123,30 @@ const VideoConference = () => {
           consumer,
         }
       ]);
-  
+
       const { track } = consumer;
       const mediaStream = new MediaStream([track]);
-  
+      console.log('new mediatream to be added is ', mediaStream);
       // ✅ Add to remoteStreamsRef if it's a video stream
       if (params.kind === 'video') {
         // Push to the ref
-        remoteStreamsRef.current.push({ id: remoteProducerId, stream: mediaStream });
-  
-        // Update state to trigger re-render
-        setRemoteStreams([...remoteStreamsRef.current]);
+        // console.log('Track enabled:', track.enabled, 'Muted:', track.muted);
+        // remoteStreamsRef.current.push({ id: remoteProducerId, stream: mediaStream });
+        // console.log('remoteStreamsRef.current', remoteStreamsRef.current);
+        // // Update state to trigger re-render
+        // setRemoteStreams([...remoteStreamsRef.current]);
+        // console.log('remote streams are ', remoteStreams);
+        // addRemoteStream(remoteProducerId,mediaStream);
+        remoteVideoRef.current.srcObject=mediaStream;
       }
-  
+
       // Resume stream from server side
       socktRef.current.emit('consumer-resume', {
         serverConsumerId: params.serverConsumerId
       });
     });
   };
-  
+  console.log('remote streams are ', remoteStreams);
   const signalNewConsumerTransport = async (remoteProducerId) => {
     console.log('signalNewConsumerTransport');
     if (consumerTransport.includes(remoteProducerId)) {
@@ -151,7 +162,7 @@ const VideoConference = () => {
         console.log(params.error)
         return
       }
-      console.log(`PARAMS... ${params}`)
+      console.log('PARAMS... ', params);
       if (device.current === undefined) console.log('device not available ');
       console.log('device is ', device.current);
       let consumerTransportt
@@ -226,10 +237,10 @@ const VideoConference = () => {
                 rtpParameters: parameters.rtpParameters,
                 appData: parameters.appData,
               },
-              ({ id, producersExists }) => {
-                console.log("✅ Producer ID received:", id);
+              ({ id, producersExist }) => {
+                console.log("✅ Producer ID received:", id, producersExist);
                 callback({ id });
-                if (producersExists) {
+                if (producersExist) {
                   getProducers()
                 }
               }
@@ -286,7 +297,6 @@ const VideoConference = () => {
       setRtpCapabilities(data.rtpCapabilities);
       createDevice(data.rtpCapabilities);
     });
-
   }, [roomName]);
   const streamSuccess = useCallback(
     (newStream) => {
@@ -318,7 +328,6 @@ const VideoConference = () => {
     },
     [joinRoom, params]
   );
-
   const getLocalStream = useCallback(async () => {
     try {
       console.log("Requesting local stream with audio:", audio, "and video:", video);
@@ -326,7 +335,6 @@ const VideoConference = () => {
         audio: audio,
         video: video,
       });
-
       setStream(newStream);
       newLocalStream.current = newStream;
       console.log("3 New stream is:", newLocalStream);
@@ -357,6 +365,10 @@ const VideoConference = () => {
       }
     }
   };
+  const removeRemoteStream = (id) => {
+    remoteStreamsMap.current.delete(id);
+    setRemoteStreams(Array.from(remoteStreamsMap.current.entries()));
+  };
 
   useEffect(() => {
     const socket = io("https://localhost:5000", {
@@ -385,7 +397,6 @@ const VideoConference = () => {
           <video
             id="localVideo"
             autoPlay
-
             className="w-60 h-40 bg-black p-2 rounded-lg shadow-lg"
             ref={localVideoRef}
           ></video>
@@ -393,20 +404,26 @@ const VideoConference = () => {
         </div>
 
         {/* Remote Videos */}
-        {remoteStreams.map((remote, index) => (
-          <div key={remote.id} className="flex flex-col items-center">
+        
+        {/* {remoteStreams.map(([id, stream], index) => (
+          <div key={id} className="flex flex-col items-center">
             <video
               autoPlay
               playsInline
               className="w-60 h-40 bg-black p-2 rounded-lg shadow"
               ref={(el) => {
-                if (el) el.srcObject = remote.stream;
+                if (el && !el.srcObject) el.srcObject = stream;
               }}
             ></video>
             <p className="mt-2 text-center text-xs text-gray-500">User {index + 1}</p>
           </div>
-        ))}
-
+        ))} */}
+         <div className="relative border-4 border-gray-700 rounded-lg overflow-hidden">
+                        <video ref={remoteVideoRef} autoPlay playsInline className="w-full h-[250px] bg-gray-600"></video>
+                        <div className="absolute bottom-2 left-2 bg-black bg-opacity-50 text-white px-3 py-1 rounded-md text-sm">
+                            Other
+                        </div>
+                    </div>
       </div>
 
       {/* Controls */}
