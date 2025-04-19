@@ -67,14 +67,47 @@ app.get("/", (req, res) => {
 io.on('connection', (socket) => {
   console.log(`Socket connected: ${socket.id}`);
   socket.emit('connection-success', { socketId: socket.id });
-  socket.on('disconnect', () => {
-    console.log('Peer disconnected:', socket.id);
+    const removeItems = (items, socketId, type) => {
+    items.forEach(item => {
+      if (item.socketId === socket.id) {
+        item[type].close()
+      }
+    })
+    items = items.filter(item => item.socketId !== socket.id)
 
-    // Remove the producer entry with this socket.id
-    const index = producers.findIndex(p => p.socketId === socket.id);
-    if (index !== -1) {
-      producers.splice(index, 1);
-      console.log(`Producer with socketId ${socket.id} removed.`);
+    return items
+  }
+  socket.on('disconnect', () => {
+    // console.log('Peer disconnected:', socket.id);
+
+    // // Remove the producer entry with this socket.id
+    // const index = producers.findIndex(p => p.socketId === socket.id);
+    // if (index !== -1) {
+    //   producers.splice(index, 1);
+    //   console.log(`Producer with socketId ${socket.id} removed.`);
+    // }
+    const removeItems = (items, socketId, type) => {
+      items.forEach(item => {
+        if (item.socketId === socket.id) {
+          item[type].close()
+        }
+      })
+      items = items.filter(item => item.socketId !== socket.id)
+  
+      return items
+    }
+    console.log('peer disconnected')
+    consumers = removeItems(consumers, socket.id, 'consumer')
+    producers = removeItems(producers, socket.id, 'producer')
+    transports = removeItems(transports, socket.id, 'transport')
+
+    const { roomName } = peers[socket.id]
+    delete peers[socket.id]
+
+    // remove socket from room
+    rooms[roomName] = {
+      router: rooms[roomName].router,
+      peers: rooms[roomName].peers.filter(socketId => socketId !== socket.id)
     }
     // console.log('producers are ',producers);
   });
@@ -166,6 +199,7 @@ io.on('connection', (socket) => {
     const [producerTransport] = transports.filter(transport => transport.socketId === socketId && !transport.consumer)
     return producerTransport.transport
   }
+
   socket.on('transport-produce', async ({ kind, rtpParameters, appData }, callback) => {
     // call produce based on the prameters from the client
     console.log('transport produce event called ')
@@ -197,6 +231,7 @@ io.on('connection', (socket) => {
       producersExist: flag
     })
   })
+
   socket.on('getProducers', callback => {
     //return all producer transports
     console.log('get producers event called ');

@@ -6,7 +6,7 @@ import mediasoupClient from 'mediasoup-client'
 import { RemoteVideoPlayer } from '@/app/components/RemoteVideoPlayer';
 
 const VideoConference = () => {
-  const [audio, setAudio] = useState(false);
+  const [audio, setAudio] = useState(true);
   const [video, setVideo] = useState(true);
   const [stream, setStream] = useState(null);
   const socktRef = useRef(null); // ✅ useRef instead of useState for socket
@@ -44,7 +44,10 @@ const VideoConference = () => {
   // const [remoteStreams, setRemoteStreams] = useState([]);
   // const remoteVideoRef = useRef(null);
   const [rtpCapabilities, setRtpCapabilities] = useState();
-  const [consumerTransport, setConsumerTransport] = useState([]);
+  const [consumerTransports, setConsumerTransports] = useState([]);
+  // const [cameras, setCameras] = useState([]);
+  // const [selectedCameraId, setSelectedCameraId] = useState(undefined);
+
   const pathName = usePathname();
 
   const roomName = pathName.split("/").pop();
@@ -116,7 +119,7 @@ const VideoConference = () => {
         rtpParameters: params.rtpParameters
       });
 
-      setConsumerTransport(prev => [
+      setConsumerTransports(prev => [
         ...prev,
         {
           consumerTransportt,
@@ -151,12 +154,12 @@ const VideoConference = () => {
   console.log('remote streams are ', remoteStreams);
   const signalNewConsumerTransport = async (remoteProducerId) => {
     console.log('signalNewConsumerTransport');
-    if (consumerTransport.includes(remoteProducerId)) {
+    if (consumerTransports.includes(remoteProducerId)) {
       console.log('user is already joined in signalnew consumer transport ');
       return;
     }
     console.log('device value in create recv trprt ', device.current);
-    setConsumerTransport(prev => [...prev, remoteProducerId]);
+    setConsumerTransports(prev => [...prev, remoteProducerId]);
     await socktRef.current.emit('createWebRtcTransport', { consumer: true }, ({ params }) => {
       // The server sends back params needed 
       // to create Send Transport on the client side
@@ -312,7 +315,11 @@ const VideoConference = () => {
         if (socktRef.current) {
           setParams((prev) => ({ track, ...prev }));
           console.log("7 Value of params is:", params);
-          joinRoom();
+        
+          // 🔁 Add 1-second delay before calling joinRoom
+          setTimeout(() => {
+            joinRoom();
+          }, 5000);
         } else {
           console.error("❌ Socket is not yet initialized, waiting...");
           setTimeout(() => {
@@ -330,13 +337,15 @@ const VideoConference = () => {
     },
     [joinRoom, params]
   );
-  const getLocalStream = useCallback(async () => {
+  const getLocalStream = useCallback(async (selCameraId) => {
     try {
       console.log("Requesting local stream with audio:", audio, "and video:", video);
-      const newStream = await navigator.mediaDevices.getUserMedia({
-        audio: audio,
-        video: video,
-      });
+      const constraints = {
+        audio,
+        // video: selCameraId ? { deviceId: { exact: selCameraId } } : video,
+        video:video
+      };
+      const newStream = await navigator.mediaDevices.getUserMedia(constraints);
       setStream(newStream);
       newLocalStream.current = newStream;
       console.log("3 New stream is:", newLocalStream);
@@ -344,7 +353,7 @@ const VideoConference = () => {
     } catch (error) {
       console.error("❌ Error accessing media devices:", error.message);
     }
-  }, [audio, video, streamSuccess]);
+  }, [audio, video, streamSuccess, ]);
 
   const handleAudio = () => {
     if (stream) {
@@ -384,20 +393,92 @@ const VideoConference = () => {
     socket.on("connection-success", handleConnSuccess);
     // socket.on('new-producer', ({ producerId }) => console.log('new producer joined is ',producerId));
     socket.on('new-producer', ({ producerId }) => signalNewConsumerTransport(producerId))
-    return () => {
+    socket.on('producer-closed',({remoteProducerId})=>{
+      const producerToClose = consumerTransports.find(transportData => transportData.producerId === remoteProducerId)
+      producerToClose.consumerTransport.close()
+      producerToClose.consumer.close()
+      let tempConsumerTransports = consumerTransports.filter(transportData => transportData.producerId !== remoteProducerId)
+      setConsumerTransports(tempConsumerTransports);
+
+    })
+    return () => { 
       socket.off("connection-success", handleConnSuccess);
       socket.off('new-producer', ({ producerId }) => console.log('new producer joined is ', producerId));
       socket.disconnect();
     };
   }, [handleConnSuccess]);
-  useEffect(() => {
-    setRemoteStreams([...remoteStreamsRef.current]);
-  }, []);
+  // useEffect(() => {
+  //   setRemoteStreams([...remoteStreamsRef.current]);
+  // }, []);
 
+  // useEffect(() => {
+  //   const fetchCameras = async () => {
+  //     try {
+  //       const devices = await navigator.mediaDevices.enumerateDevices();
+  //       const videoDevices = devices.filter((device) => device.kind === "videoinput");
+  //       setCameras(videoDevices);
+  //       if (videoDevices.length > 0 && !selectedCameraId) {
+  //         setSelectedCameraId(videoDevices[0].deviceId);
+  //       }
+  //     } catch (err) {
+  //       console.error("Error fetching cameras", err);
+  //     }
+  //   };
+
+  //   fetchCameras();
+  // }, []);
+
+  // const initSocketAndStream = (cameraId) => {
+  //   const socket = io("https://localhost:5000", {
+  //     transports: ["websocket"],
+  //     secure: true,
+  //     rejectUnauthorized: false,
+  //   });
+  
+  //   socktRef.current = socket;
+  
+  //   socket.on("connection-success", () => {
+  //     console.log("Reconnected socket, getting stream...");
+  //     getLocalStream(cameraId); // use selected camera id
+  //   });
+  
+  //   socket.on('new-producer', ({ producerId }) => signalNewConsumerTransport(producerId));
+  // };
+
+  // useEffect(() => {
+  //   if (selectedCameraId) {
+  //     initSocketAndStream(selectedCameraId);
+  //   }
+  // }, [selectedCameraId]);
+    
+  // const handleCameraChange = async (e) => {
+  //   const newDeviceId = e.target.value;
+  
+  //   // Disconnect existing socket + media
+  //   if (socktRef.current) {
+  //     socktRef.current.disconnect();
+  //     socktRef.current = null;
+  //   }
+  
+  //   // Stop all media tracks from old stream
+  //   if (stream) {
+  //     stream.getTracks().forEach(track => track.stop());
+  //     setStream(null);
+  //   }
+  
+  //   setSelectedCameraId(newDeviceId);
+  
+  //   // Small delay to allow cleanup before reinitializing
+  //   setTimeout(() => {
+  //     initSocketAndStream(newDeviceId);
+  //   }, 300);
+  // };
+  
   return (
     <div className="w-full p-4 bg-gray-100 min-h-screen">
       <div className="flex flex-col md:flex-row gap-4 mb-4">
         {/* Local Video */}
+
         <div className="flex flex-col items-center w-full md:w-1/4">
           <video
             id="localVideo"
@@ -409,7 +490,7 @@ const VideoConference = () => {
         </div>
 
         {/* Remote Videos */}
-        
+
         {remoteStreams.map((remote, index) => (
           <div key={remote.id} className="flex flex-col items-center">
             <video
@@ -423,23 +504,23 @@ const VideoConference = () => {
             <p className="mt-2 text-center text-xs text-gray-500">User {index + 1}</p>
           </div>
         ))}
-        {/* {remoteStreams.map((remote, index) => (
-          <div key={remote.id} className="flex flex-col items-center">
-            <RemoteVideoPlayer  stream={remote.stream}>
-            </RemoteVideoPlayer>
-            <p className="mt-2 text-center text-xs text-gray-500">User {index + 1}</p>
-          </div>
-        ))} */}
-         {/* <div className="relative border-4 border-gray-700 rounded-lg overflow-hidden">
-                        <video ref={remoteVideoRef} autoPlay playsInline className="w-full h-[250px] bg-gray-600"></video>
-                        <div className="absolute bottom-2 left-2 bg-black bg-opacity-50 text-white px-3 py-1 rounded-md text-sm">
-                            Other
-                        </div>
-                    </div> */}
+        
       </div>
 
       {/* Controls */}
       <div className="flex flex-wrap justify-center gap-4 mt-4">
+        {/* <select
+          value={selectedCameraId}
+          // onChange={(e) => setSelectedCameraId(e.target.value)}
+          onChange={handleCameraChange}
+          className="p-2 border rounded"
+        >
+          {cameras.map((camera) => (
+            <option key={camera.deviceId} value={camera.deviceId}>
+              {camera.label || `Camera ${camera.deviceId}`}
+            </option>
+          ))}
+        </select> */}
         <button className="px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600">Start Call</button>
         <button className="px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600">End Call</button>
         <button className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
