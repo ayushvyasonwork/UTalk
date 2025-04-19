@@ -4,6 +4,9 @@
     "paths": {
       "@/*": ["./*"]
     },
-    "checkJs": false  // ✅ Disables TypeScript checking for JS files
-  }
-} 
+    "typeRoots": ["./node_modules/@types"],
+    "types": ["node"],
+    "checkJs": false
+  },
+  "exclude": ["node_modules"]
+}
