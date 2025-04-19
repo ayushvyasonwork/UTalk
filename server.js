@@ -4,10 +4,10 @@ import fs from 'fs';
 import path from 'path';
 import { Server } from 'socket.io';
 import mediasoup from 'mediasoup';
-
+import dotenv from 'dotenv'
 const app = express();
 const __dirname = path.resolve();
-
+dotenv.config();
 // SSL cert for HTTPS access
 const options = {
   key: fs.readFileSync('./server/ssl/key.pem', 'utf-8'),
@@ -15,7 +15,8 @@ const options = {
 };
 
 const httpsServer = https.createServer(options, app);
-httpsServer.listen(5000, () => {
+console.log('process.env.PORT',process.env.PORT);
+httpsServer.listen(process.env.PORT, () => {
   console.log('Server listening on port: 5000');
 });
 
